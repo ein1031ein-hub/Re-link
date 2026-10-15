@@ -2,15 +2,33 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Re:link</title>
+  <meta name="description" content="대학생을 위한 디지털 링크워커 · 사회적 처방 앱">
+  <meta name="theme-color" content="#2f5d50">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#4f46e5">
+  <link rel="icon" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Re:link">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Re:link</h1>
-  <p>시제품 테스트 중</p>
+  <header class="topbar">
+    <button class="brand" data-go="home" aria-label="처음으로">Re<span>:</span>link</button>
+    <button class="sos" data-go="crisis">지금 힘들어요</button>
+  </header>
+
+  <main id="app"></main>
+
+  <footer class="foot">
+    Re:link는 치료를 대체하지 않아요. 위기 상황에서는 전문기관에 먼저 연락해 주세요.<br>
+    장소는 공공 문화자원 정보이며 제휴처가 아닙니다.
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
   </script>

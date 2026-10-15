@@ -1,0 +1,13 @@
+{
+  "name": "Re:link",
+  "short_name": "Re:link",
+  "description": "대학생을 위한 디지털 링크워커 · 사회적 처방 앱",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#2f5d50",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
