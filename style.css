@@ -135,3 +135,34 @@ textarea:focus { outline: none; border-color: var(--accent); }
 .banner { background: var(--warm-soft); color: #7a3a1f; border-radius: 14px; padding: 14px; margin-top: 12px; font-size: 14px; }
 
 .foot { padding: 20px 16px 40px; font-size: 11.5px; color: var(--muted); text-align: center; }
+
+/* ── 2차: 처방 코드 · 회송 · 기록 요약 ── */
+.choices.two { grid-template-columns: 1fr 1fr; }
+.btn.warm { background: var(--warm); }
+.link {
+  display: block; width: 100%; text-align: center; margin-top: 10px; padding: 8px;
+  color: var(--muted); font-size: 14px; text-decoration: underline; text-underline-offset: 3px;
+}
+.input {
+  width: 100%; font: inherit; font-size: 20px; font-weight: 700; letter-spacing: 0.08em;
+  border: 1.5px solid var(--line); border-radius: 14px; padding: 14px; background: var(--card); color: var(--ink);
+}
+.input:focus { outline: none; border-color: var(--accent); }
+.err { color: var(--warm); font-size: 13px; margin-top: 4px; min-height: 18px; }
+.em { color: var(--accent); }
+
+.rx-info { border-color: var(--accent); }
+.kv { display: flex; gap: 10px; font-size: 14px; margin-top: 8px; }
+.kv > b { color: var(--muted); font-weight: 500; min-width: 64px; flex-shrink: 0; }
+.bar { height: 8px; border-radius: 999px; background: var(--accent-soft); margin-top: 12px; overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+
+.tag.program { background: #fbefc9; color: #8a6200; }
+
+.moodbars { display: flex; gap: 6px; align-items: flex-end; margin-top: 12px; overflow-x: auto; }
+.moodbars > div { flex: 1; min-width: 44px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.moodbars .mb { width: 18px; border-radius: 6px 6px 2px 2px; background: var(--accent); opacity: 0.85; }
+.moodbars .small { font-size: 11px; }
+
+.demo-links { margin-top: 20px; display: flex; justify-content: center; gap: 4px; }
+.demo-links .link { width: auto; font-size: 12.5px; }
