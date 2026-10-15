@@ -6,15 +6,49 @@
 const $app = document.getElementById('app');
 
 // ── 저장소 (로그인 없이 이 기기에만 저장) ──
+// 실제 기록과 시연(상담센터 연계 시나리오) 기록은 서로 다른 키에 저장해서 절대 섞이지 않게 한다.
 const STORE_KEY = 'relink-v1';
-const EMPTY_STORE = () => ({ history: [], active: null, nextEnergy: null, code: null, reports: {}, demo: false });
+const DEMO_KEY = 'relink-demo-v1';
+const EMPTY_STORE = () => ({ history: [], active: null, nextEnergy: null, code: null, reports: {} });
+
+function readKey(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
+}
+let demoMode = !!readKey(DEMO_KEY);
+
+function loadReal() {
+  let data = readKey(STORE_KEY) || {};
+  if (data.demo) data = {}; // 예전 버전에서 실제 키에 들어간 예시 기록은 버린다
+  delete data.code; // 처방 코드는 시연 모드에서만 쓴다
+  delete data.demo;
+  (data.history || []).forEach(h => delete h.note); // 한 줄 메모는 저장하지 않는다
+  return Object.assign(EMPTY_STORE(), data);
+}
 function load() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
+  return demoMode ? Object.assign(EMPTY_STORE(), readKey(DEMO_KEY)) : loadReal();
 }
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
+  try { localStorage.setItem(demoMode ? DEMO_KEY : STORE_KEY, JSON.stringify(store)); } catch {}
 }
-let store = Object.assign(EMPTY_STORE(), load());
+let store = load();
+if (!demoMode) save(); // 정리된 내용을 바로 반영
+
+function enterDemo(data) {
+  demoMode = true;
+  store = Object.assign(EMPTY_STORE(), data);
+  form = EMPTY_FORM();
+  save();
+}
+function exitDemo() {
+  try { localStorage.removeItem(DEMO_KEY); } catch {}
+  demoMode = false;
+  store = loadReal();
+  form = EMPTY_FORM();
+  lastResult = { items: [], programs: [], prepOnly: false, emptyReason: null };
+}
+
+// 이 세션에서 위기 표현이 감지됐거나 가장 낮은 기분을 기록했는지 (화면에 연락처 경로를 계속 보여준다)
+let crisisSeen = false;
 
 // 현재 입력 상태
 const EMPTY_FORM = () => ({ purpose: null, energy: null, area: null, interests: [], text: '', ackWords: [] });
@@ -30,6 +64,16 @@ const findItem = id => PLACES.find(p => p.id === id) || PROGRAMS.find(p => p.id 
 const fmtDate = iso => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
 const fmtHour = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
 const demoTag = '<span class="tag gray">시연용</span>';
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC[c]);
+
+// 가장 최근 기록이 '못 갔어요'면 그 장벽 (다음 체크인을 하면 효과가 끝난다)
+function lastBarrier() {
+  const last = store.history[store.history.length - 1];
+  return last && !last.done ? last.barrier : null;
+}
+const counselingContact = () => CRISIS_CONTACTS.find(c => c.counseling && c.tel);
+const helpLine = () => `<p class="helpline">이야기할 곳이 필요하면 → <a href="tel:109">109</a></p>`;
 
 function codeProgress() {
   if (!store.code) return null;
@@ -45,9 +89,10 @@ function progressBar(done, goal) {
 }
 
 // ── 위기 감지 ──
+// 입력과 키워드 모두 공백을 지우고 비교한다 ('죽 고 싶 다'도 감지)
 function crisisWords(text) {
-  const t = (text || '').replace(/\s+/g, ' ');
-  return CRISIS_KEYWORDS.filter(k => t.includes(k));
+  const t = (text || '').replace(/\s+/g, '');
+  return CRISIS_KEYWORDS.filter(k => t.includes(k.replace(/\s+/g, '')));
 }
 // 이미 "아니에요"라고 답한 단어는 다시 묻지 않는다
 function needsCrisisCheck(text, acked = []) {
@@ -73,11 +118,12 @@ function extractTags(text) {
 // ── 운영 여부 계산 ──
 function openStatus(place, now = new Date()) {
   if (place.inApp) return { open: true, label: '지금 바로 가능' };
+  const h = now.getHours() + now.getMinutes() / 60;
+  if (place.daylight && (h >= 18 || h < 6)) return { open: false, closedToday: true, label: '밝을 때 추천해요' };
   if (place.hours === 'always') return { open: true, label: '상시 이용 가능' };
   if (!place.hours) return { open: null, label: '운영시간 확인 필요' };
   const today = place.hours[now.getDay()];
   if (!today) return { open: false, closedToday: true, label: '오늘 휴무' };
-  const h = now.getHours() + now.getMinutes() / 60;
   if (h < today[0]) return { open: false, label: `${fmtHour(today[0])}에 열어요` };
   if (h >= today[1]) return { open: false, closedToday: true, label: '오늘 운영 종료' };
   if (h + place.minutes / 60 > today[1]) return { open: true, label: `${fmtHour(today[1])} 마감 · 서두르면 가능` };
@@ -97,8 +143,10 @@ function programStatus(prog, now = new Date()) {
   const start = new Date(prog.period[0] + 'T00:00:00');
   const end = new Date(prog.period[1] + 'T23:59:59');
   if (now > end) return null; // 마감 → 숨김
-  if (now < start) return { open: false, label: `접수 예정 · ${fmtDate(start)}부터` };
+  const exhibit = prog.periodLabel === '전시';
+  if (now < start) return { open: false, label: `${exhibit ? '전시 예정' : '접수 예정'} · ${fmtDate(start)}부터` };
   const left = Math.floor((end - now) / DAY);
+  if (exhibit) return { open: true, label: left === 0 ? '전시 중 · 오늘까지' : `전시 중 · D-${left}` };
   return { open: true, label: left === 0 ? '모집 중 · 오늘 마감' : `모집 중 · D-${left}` };
 }
 
@@ -119,6 +167,8 @@ function scoreItem(p, f) {
   if (f.purpose === 'rhythm' && (p.interests.includes('move') || p.interests.includes('learn'))) score += 2;
   if (f.purpose === 'care' && p.interests.includes('rest')) score += 3;
   if (f.energy === 3 && p.social) score += 2;
+  // 지난번 '혼자 가기 어색했어요' → 사람 만남이 있는 활동은 뒤로
+  if (lastBarrier() === '혼자 가기 어색했어요' && p.social) score -= 4;
   return { score, hits };
 }
 
@@ -160,7 +210,11 @@ function match(f) {
     if (f.energy === 1) { items = picked.slice(0, 1); prepOnly = true; }
     else { items = []; emptyReason = 'outward'; }
   }
-  if (f.area === 'school' && f.energy === 3 && !items.some(i => i.place.energy[1] === 3)) emptyReason = emptyReason || 'schoolHigh';
+  // 학교 근처에 맞는 장소가 부족할 때 도봉동 안내 (둘 다 해당하면 '사람과 연결' 안내 하나만)
+  if (f.area === 'school' && !emptyReason) {
+    if (f.purpose === 'connect' && !items.some(i => i.place.social)) emptyReason = 'schoolSocial';
+    else if (f.energy === 3 && !items.some(i => i.place.energy[1] === 3)) emptyReason = 'schoolHigh';
+  }
 
   // 지역 프로그램 (집에서 고른 날에도 '다음 걸음'으로 보여준다. 에너지 낮음이면 생략)
   const programs = f.energy === 1 ? [] : PROGRAMS
@@ -178,7 +232,9 @@ function match(f) {
 }
 
 function makeReason(s, f) {
-  const parts = [`에너지 ${ENERGY[f.energy].label}: ${ENERGY[f.energy].rule}.`];
+  const parts = [];
+  if (lastBarrier() === '혼자 가기 어색했어요' && !s.place.social) parts.push('혼자서도 편한 곳이에요.');
+  parts.push(`에너지 ${ENERGY[f.energy].label}: ${ENERGY[f.energy].rule}.`);
   if (f.purpose === 'connect' && s.place.social) parts.push(PURPOSES.connect.reason);
   if (s.hits.length) parts.push(`고른 방식(${s.hits.map(h => INTERESTS[h]).join(', ')})에 맞아요.`);
   parts.push(`약 ${s.place.minutes}분이면 충분해요.`);
@@ -187,6 +243,8 @@ function makeReason(s, f) {
 
 // ── 화면 그리기 ──
 function render(html) {
+  const band = document.getElementById('band');
+  if (band) band.hidden = !demoMode;
   $app.innerHTML = `<section class="screen">${html}</section>`;
   window.scrollTo(0, 0);
 }
@@ -195,6 +253,7 @@ const SCREENS = {};
 function go(screen, arg) { (SCREENS[screen] || SCREENS.home)(arg); }
 
 document.addEventListener('click', e => {
+  if (e.target.closest('#demoExit')) { exitDemo(); go('home'); return; }
   const el = e.target.closest('[data-go]');
   if (el) { e.preventDefault(); go(el.dataset.go, el.dataset.arg); }
 });
@@ -208,7 +267,7 @@ SCREENS.home = function home() {
 
   render(`
     <h1>상담실 밖에서도<br>이어지는 회복</h1>
-    <p class="lead">학생상담센터가 처방하고, 동네가 함께해요.<br>상담을 기다리는 동안, 상담과 상담 사이에.</p>
+    <p class="lead">지금 내 에너지에 맞는 동네 활동을 찾아드려요.<br>다녀온 기록으로 다음 걸음을 함께 조정해요.</p>
 
     ${c ? `
       <div class="card rx-info">
@@ -224,14 +283,11 @@ SCREENS.home = function home() {
     ${a ? `
       <div class="card accent">
         <div class="small">진행 중인 처방 · ${fmtDate(a.at)}</div>
-        <div class="rx-name" style="margin:4px 0 0">${a.name}</div>
+        <div class="rx-name" style="margin:4px 0 0">${esc(a.name)}</div>
         <button class="btn light" data-go="checkin">다녀왔어요? 체크인하기</button>
       </div>` : ''}
 
-    ${c
-      ? `<button class="btn" data-go="input">${a ? '새 처방 받기' : '오늘의 처방 받기'}</button>`
-      : `<button class="btn" data-go="code">상담센터에서 처방 코드를 받았어요</button>
-         <button class="link" data-go="input">코드 없이 먼저 둘러볼게요</button>`}
+    <button class="btn" data-go="input">${a ? '새 처방 받기' : '오늘의 처방 받기'}</button>
 
     <h2>나의 기록</h2>
     <div class="card">
@@ -239,56 +295,68 @@ SCREENS.home = function home() {
         <p class="small">지금까지 처방 ${store.history.length}개 중 <b class="em">${done}개</b> 참여했어요.</p>
         <ul class="history">
           ${store.history.slice(-5).reverse().map(h => `
-            <li><span>${fmtDate(h.at)} · ${h.name}</span><span>${h.done ? MOODS[h.mood] : '<span class="small">못 갔어요</span>'}</span></li>`).join('')}
-        </ul>` : `<p class="small">아직 기록이 없어요. 첫 처방을 받아보세요.</p>`}
+            <li><span>${fmtDate(h.at)} · ${esc(h.name)}</span><span>${h.done ? MOODS[h.mood] : '<span class="small">못 갔어요</span>'}</span></li>`).join('')}
+        </ul>
+        ${demoMode ? '' : '<button class="btn ghost" data-go="report">내 활동 기록 보기</button>'}` : `<p class="small">아직 기록이 없어요. 첫 처방을 받아보세요.</p>`}
     </div>
 
     <h2>Re:link는 이렇게 일해요</h2>
     <div class="card">
       <ol class="steps">
-        <li>학생상담센터에서 처방 코드를 받아요.</li>
-        <li>지금 필요한 것과 에너지에 맞춰, 검증된 지역 활동을 처방해요.</li>
+        <li>지금 필요한 것과 에너지를 골라요.</li>
+        <li>검증된 지역 활동 중에서 처방을 골라드려요.</li>
         <li>다녀온 기록으로 다음 처방을 조정하고, 원하면 상담 때 함께 봐요.</li>
       </ol>
+      <p class="small">앞으로: 학생상담센터와 연계해 처방하는 구조를 준비하고 있어요.</p>
     </div>
 
+    ${demoMode ? '' : `
+      <div class="card scenario">
+        <div class="rx-head"><span class="rx-no">상담센터 연계 시나리오</span><span class="tag gray">시연</span></div>
+        <p class="small" style="margin-top:6px">학생상담센터와 연계되면 이렇게 쓰여요. 실제 협약 전 시연용이에요.</p>
+        <button class="btn ghost" data-go="code">시나리오 체험하기</button>
+        <button class="link" id="demoLoad">체험용 예시 기록 불러오기</button>
+      </div>`}
+
+    ${!demoMode && !store.history.length ? '<p class="small center" style="margin-top:16px">기록은 이 기기에만 저장되고, 어디로도 보내지 않아요.</p>' : ''}
+
     <div class="demo-links">
-      <button class="link" id="demoLoad">체험용 예시 기록 불러오기</button>
-      ${store.history.length || store.code ? '<button class="link" id="demoClear">예시 기록 지우기</button>' : ''}
+      ${demoMode ? '<button class="link" id="demoClear">예시 기록 지우기</button>'
+        : store.history.length ? '<button class="link" id="realClear">내 기록 모두 지우기</button>' : ''}
     </div>
   `);
 
-  document.getElementById('demoLoad').onclick = () => {
-    if (store.history.length && !store.demo && !confirm('지금 기록이 예시 기록으로 바뀌어요. 계속할까요?')) return;
-    loadDemo(); home();
-  };
-  const clr = document.getElementById('demoClear');
-  if (clr) clr.onclick = () => {
-    if (!confirm('이 기기에 저장된 기록을 모두 지울까요?')) return;
-    store = EMPTY_STORE(); form = EMPTY_FORM(); save(); home();
+  const dl = document.getElementById('demoLoad');
+  if (dl) dl.onclick = () => { loadDemo(); go('home'); };
+  const dc = document.getElementById('demoClear');
+  if (dc) dc.onclick = () => { exitDemo(); go('home'); };
+  const rc = document.getElementById('realClear');
+  if (rc) rc.onclick = () => {
+    if (!confirm('이 기기에 저장된 내 기록을 모두 지울까요?')) return;
+    store = EMPTY_STORE(); form = EMPTY_FORM(); save(); go('home');
   };
 };
 
-// ① 의뢰 받기: 처방 코드 입력
+// ① 의뢰 받기: 처방 코드 입력 (상담센터 연계 시나리오 · 시연 모드로 들어간다)
 SCREENS.code = function code() {
   render(`
     <h1>처방 코드 입력</h1>
-    <p class="lead">상담 선생님께 받은 코드를 입력하면, 선생님이 정한 처방 목적에 맞춰 활동을 추천해요.</p>
+    <p class="lead">학생상담센터와 연계되면, 상담 선생님께 받은 코드로 선생님이 정한 처방 목적에 맞춰 활동을 추천해요.</p>
+    <div class="banner">실제 협약 전 시연용 시나리오예요. 시연 기록은 내 기록과 따로 저장돼요.</div>
     <div class="card">
       <input id="codeIn" class="input" placeholder="예) DS2026" autocomplete="off" autocapitalize="characters">
       <p class="small" style="margin-top:8px">시연용 코드: DS2026</p>
       <p class="err" id="codeErr"></p>
     </div>
     <button class="btn" id="codeGo">확인</button>
-    <button class="link" data-go="input">코드 없이 먼저 둘러볼게요</button>
+    <button class="link" data-go="home">돌아가기</button>
   `);
   const inp = document.getElementById('codeIn');
   const submit = () => {
     const v = inp.value.trim().toUpperCase();
     if (!CODES[v]) { document.getElementById('codeErr').textContent = '코드를 다시 확인해 주세요.'; return; }
-    store.code = { code: v, startedAt: new Date().toISOString() };
+    enterDemo({ code: { code: v, startedAt: new Date().toISOString() } });
     form.purpose = CODES[v].purpose;
-    save();
     go('home');
   };
   document.getElementById('codeGo').onclick = submit;
@@ -301,9 +369,11 @@ SCREENS.input = function input() {
   const c = codeInfo();
   if (!form.purpose && c) form.purpose = c.purpose;
   if (!form.energy && store.nextEnergy) form.energy = store.nextEnergy;
-  const hint = store.nextEnergy
+  const hint = (store.nextEnergy
     ? `<div class="banner">지난 체크인을 바탕으로 에너지 <b>${ENERGY[store.nextEnergy].label}</b>를 먼저 골라뒀어요. 오늘 상태에 맞게 바꿔도 돼요.</div>`
-    : '';
+    : '') + (lastBarrier() === '너무 멀었어요'
+    ? '<div class="banner">지난번에 멀었다고 해서 학교 근처를 먼저 골라뒀어요. 바꿔도 돼요.</div>'
+    : '');
 
   render(`
     <h1>요즘 어때요?</h1>
@@ -317,7 +387,7 @@ SCREENS.input = function input() {
     </div>
 
     <h2>한 줄로 말하기 <span class="small">(선택)</span></h2>
-    <textarea id="free" placeholder="예) 수업 끝나고 너무 지쳐서 혼자 조용히 쉬고 싶어">${form.text}</textarea>
+    <textarea id="free" placeholder="예) 수업 끝나고 너무 지쳐서 혼자 조용히 쉬고 싶어">${esc(form.text)}</textarea>
     <div class="tagline" id="tags"></div>
 
     <h2>오늘 에너지</h2>
@@ -398,6 +468,7 @@ function confirmCrisis(onContinue) {
     <button class="btn warm" data-go="crisis" data-arg="detected">도움받을 곳 보기</button>
     <button class="btn ghost" id="cont">아니에요, 계속할게요</button>
   `);
+  crisisSeen = true; // 이후 처방전·체크인 완료 화면에 연락처 한 줄을 계속 보여준다
   document.getElementById('cont').onclick = onContinue;
 }
 
@@ -432,7 +503,7 @@ SCREENS.result = function result() {
         <div><b>지금</b><span class="${r.status.open === false ? 'closed' : r.status.open ? 'open' : ''}">${r.status.label}</span></div>
       </div>
       ${p.note ? `<div class="note">※ ${p.note}</div>` : ''}
-      ${store.reports[p.id] ? `<div class="note">⚠ 최근 이용자 제보: 운영 확인 필요</div>` : ''}
+      ${store.reports[p.id] ? `<div class="note">⚠ 지난번에 문이 닫혀 있었다고 기록했어요</div>` : ''}
       <div class="rx-why"><b>왜 이 처방?</b> ${p.why}<br><span class="small">${r.reason}</span></div>
       <div class="rx-actions">
         ${p.inApp
@@ -452,7 +523,7 @@ SCREENS.result = function result() {
       <div class="rx-name">${x.prog.name}</div>
       <div class="rx-meta">
         <div><b>장소</b>${x.prog.place}</div>
-        <div><b>접수</b>${fmtDate(x.prog.period[0] + 'T00:00')}~${fmtDate(x.prog.period[1] + 'T00:00')}</div>
+        <div><b>${x.prog.periodLabel || '접수'}</b>${fmtDate(x.prog.period[0] + 'T00:00')}~${fmtDate(x.prog.period[1] + 'T00:00')}</div>
       </div>
       <div class="rx-why">${x.prog.why}</div>
       <div class="rx-actions">
@@ -477,11 +548,15 @@ SCREENS.result = function result() {
     ${emptyReason === 'schoolHigh' ? `
       <div class="banner">학교 근처의 활발한 활동은 아직 준비 중이에요. '조금 멀리 · 도봉동'에서 더 찾을 수 있어요.
         <button class="link" id="toHome" style="display:block;margin-top:6px">도봉동에서 찾기 →</button></div>` : ''}
+    ${emptyReason === 'schoolSocial' ? `
+      <div class="banner">학교 근처엔 사람과 함께하는 활동이 아직 적어요. 도봉동에서 더 찾아볼까요?
+        <button class="link" id="toHome" style="display:block;margin-top:6px">도봉동에서 찾기 →</button></div>` : ''}
     ${!items.length && !emptyReason ? `<div class="card"><p>조건에 맞는 처방을 찾지 못했어요. 생활권이나 에너지를 바꿔볼까요?</p></div>` : ''}
 
-    ${programs.length ? `<h2>지금 모집 중인 지역 프로그램</h2>${programs.map(progCard).join('')}` : ''}
+    ${programs.length ? `<h2>${programs.some(x => x.status.open) ? '지역 프로그램' : '곧 열리는 지역 프로그램'}</h2>${programs.map(progCard).join('')}` : ''}
 
     <button class="btn ghost" data-go="input">조건 바꾸기</button>
+    ${crisisSeen ? helpLine() : ''}
   `);
 
   const reArea = area => { form.area = area; lastResult = match(form); go('result'); };
@@ -526,7 +601,7 @@ SCREENS.checkin = function checkin() {
   const c = { done: null, mood: null, barrier: null, text: '' };
 
   render(`
-    <h1>${a.name}</h1>
+    <h1>${esc(a.name)}</h1>
     <p class="lead">어땠는지 짧게 알려주세요. 다음 처방에 반영할게요.</p>
 
     <h2>다녀왔나요?</h2>
@@ -559,7 +634,7 @@ SCREENS.checkin = function checkin() {
     more.innerHTML = c.done ? `
       <h2>기분은 어땠어요?</h2>
       <div class="mood" id="mood">${MOODS.map((m, i) => `<button class="chip" data-v="${i}">${m}</button>`).join('')}</div>
-      <h2>한 줄 기록 <span class="small">(선택 · 나만 볼 수 있어요)</span></h2>
+      <h2>한 줄 기록 <span class="small">(선택 · 저장되지 않아요)</span></h2>
       <textarea id="note" placeholder="예) 생각보다 조용해서 좋았다"></textarea>
     ` : `
       <h2>무엇이 어려웠나요? <span class="small">(선택)</span></h2>
@@ -593,20 +668,22 @@ function finishCheckin(a, c) {
     msg = '다녀온 것만으로도 충분해요. 다음에도 비슷한 강도로 해볼게요.';
   } else {
     next = Math.max(1, lv - 1);
-    msg = '괜찮아요. 다음엔 조금 더 작고 가까운 처방으로 시작해요.';
+    msg = '괜찮아요. 다음엔 조금 더 가벼운 처방으로 시작해요.';
     if (c.barrier === '혼자 가기 어색했어요') msg += '<br>혼자서도 편한 곳 위주로 골라볼게요.';
-    if (c.barrier === '너무 멀었어요') msg += '<br>"학교 근처" 처방부터 시작해도 좋아요.';
+    if (c.barrier === '너무 멀었어요') msg += '<br>다음엔 학교 근처를 먼저 골라둘게요.';
     if (c.barrier === '문이 닫혀 있었어요') {
       store.reports[a.id] = new Date().toISOString();
-      msg += '<br>알려줘서 고마워요. 정보 확인 목록에 올렸어요.';
+      msg += '<br>알려줘서 고마워요. 이 기기에서는 다음 추천 때 뒤로 미뤄둘게요.';
     }
   }
+  if (c.done && c.mood === 0) crisisSeen = true;
 
-  store.history.push({ id: a.id, name: a.name, energy: lv, purpose: a.purpose, at: a.at, done: c.done, mood: c.mood, barrier: c.barrier, note: c.text, checkedAt: new Date().toISOString() });
+  // 한 줄 메모(c.text)는 위기 표현 확인에만 쓰고 저장하지 않는다
+  store.history.push({ id: a.id, name: a.name, energy: lv, purpose: a.purpose, at: a.at, done: c.done, mood: c.mood, barrier: c.barrier, checkedAt: new Date().toISOString() });
   store.active = null;
   store.nextEnergy = next;
   save();
-  form = { ...EMPTY_FORM(), purpose: form.purpose, area: form.area, interests: form.interests };
+  form = { ...EMPTY_FORM(), purpose: form.purpose, area: c.barrier === '너무 멀었어요' ? 'school' : form.area, interests: form.interests };
 
   if (needsReferral()) return go('referral', lv);
 
@@ -615,6 +692,7 @@ function finishCheckin(a, c) {
     <div class="card"><p>${msg}</p></div>
     <button class="btn" data-go="input">다음 처방 받기</button>
     <button class="btn ghost" data-go="home">처음으로</button>
+    ${crisisSeen ? helpLine() : ''}
   `);
 }
 
@@ -634,8 +712,12 @@ SCREENS.referral = function referral(lv) {
     <div class="card">
       <p>최근 처방이 조금 버거웠던 것 같아요. 처방을 바꾸는 것도 좋지만, 상담 선생님과 한번 이야기해보면 어때요?</p>
     </div>
-    <button class="btn" data-go="crisis" data-arg="contacts">상담센터 연락처 보기</button>
-    ${store.code ? `<button class="btn ghost" data-go="report">상담 선생님께 보여줄 기록 만들기</button>` : ''}
+    ${counselingContact()
+      ? '<button class="btn" data-go="crisis" data-arg="contacts">상담센터 연락처 보기</button>'
+      : '<button class="btn" data-go="crisis">도움받을 수 있는 곳 보기</button>'}
+    ${demoMode
+      ? '<button class="btn ghost" data-go="report">상담 선생님께 보여줄 기록 만들기</button>'
+      : '<button class="btn ghost" data-go="report">내 활동 기록 보기</button>'}
     <button class="btn ghost" id="lighter">처방을 더 가볍게 바꿔볼게요</button>
   `);
   document.getElementById('lighter').onclick = () => {
@@ -661,17 +743,17 @@ SCREENS.report = function report() {
   done.forEach(h => { places[h.name] = (places[h.name] || 0) + 1; });
 
   render(`
-    <h1>상담 때 보여줄 기록</h1>
-    <div class="banner">이 화면은 상담 시간에 선생님께 직접 보여주는 용도예요. 어디에도 전송되지 않아요.</div>
+    <h1>${demoMode ? '상담 때 보여줄 기록' : '내 활동 기록'}</h1>
+    <div class="banner">${demoMode ? '이 화면은 상담 시간에 선생님께 직접 보여주는 용도예요. ' : '상담 때 선생님께 직접 보여줘도 좋아요. '}어디에도 전송되지 않아요.</div>
 
     <div class="card">
-      <div class="rx-head"><span class="rx-no">처방 요약</span>${demoTag}</div>
-      ${c ? `
+      <div class="rx-head"><span class="rx-no">${demoMode ? '처방 요약' : '참여 요약'}</span>${demoMode ? demoTag : ''}</div>
+      ${demoMode && c ? `
         <div class="kv"><b>처방 기관</b><span>${c.org}</span></div>
         <div class="kv"><b>처방 목적</b><span>${PURPOSES[c.purpose].label}</span></div>
         <div class="kv"><b>기간</b><span>${fmtDate(pr.start)}~${fmtDate(pr.end)} (${c.weeks}주)</span></div>
         <div class="kv"><b>참여</b><span><b class="em">${pr.goal}회 중 ${pr.done}회 참여</b></span></div>
-        ${progressBar(pr.done, pr.goal)}` : `<p class="small">처방 코드 없이 사용한 기록이에요.</p>`}
+        ${progressBar(pr.done, pr.goal)}` : `<div class="kv"><b>참여</b><span><b class="em">처방 ${hist.length}개 중 ${done.length}회 참여</b></span></div>`}
     </div>
 
     <div class="card">
@@ -684,17 +766,17 @@ SCREENS.report = function report() {
 
     <div class="card">
       <div class="rx-no">자주 겪은 어려움</div>
-      ${Object.keys(barriers).length ? `<ul class="history">${Object.entries(barriers).sort((a, b) => b[1] - a[1]).map(([b, n]) => `<li><span>${b}</span><span>${n}회</span></li>`).join('')}</ul>`
+      ${Object.keys(barriers).length ? `<ul class="history">${Object.entries(barriers).sort((a, b) => b[1] - a[1]).map(([b, n]) => `<li><span>${esc(b)}</span><span>${n}회</span></li>`).join('')}</ul>`
         : '<p class="small">기록된 어려움이 없어요.</p>'}
     </div>
 
     <div class="card">
       <div class="rx-no">다녀온 곳</div>
-      ${Object.keys(places).length ? `<ul class="history">${Object.entries(places).map(([p, n]) => `<li><span>${p}</span><span>${n}회</span></li>`).join('')}</ul>`
+      ${Object.keys(places).length ? `<ul class="history">${Object.entries(places).map(([p, n]) => `<li><span>${esc(p)}</span><span>${n}회</span></li>`).join('')}</ul>`
         : '<p class="small">아직 다녀온 곳이 없어요.</p>'}
     </div>
 
-    <p class="small" style="margin-top:12px">개인 메모(한 줄 기록)는 포함되지 않아요.<br>상담센터 연동(선생님이 직접 확인)은 정식 서비스에서 제공 예정이에요.</p>
+    <p class="small" style="margin-top:12px">개인 메모(한 줄 기록)는 저장하지 않아서 포함되지 않아요.${demoMode ? '<br>상담센터 연동(선생님이 직접 확인)은 정식 서비스에서 제공 예정이에요.' : ''}</p>
     <button class="btn ghost" data-go="home">처음으로</button>
   `);
 };
@@ -706,9 +788,9 @@ SCREENS.crisis = function crisis(reason) {
     detected: '지금 바로 이야기할 수 있는 곳이에요. 어떤 이야기든 괜찮아요.',
     contacts: '상담 선생님과 이야기하고 싶다면 학생상담센터로 연락해 보세요.',
   }[reason] || '지금 바로 이야기할 수 있는 곳이에요.';
-  const list = reason === 'contacts'
-    ? [...CRISIS_CONTACTS].sort((a, b) => (b.name.includes('학생상담센터') - a.name.includes('학생상담센터')))
-    : CRISIS_CONTACTS;
+  // 번호가 없는 항목은 누를 수 없으니 보여주지 않는다
+  const shown = CRISIS_CONTACTS.filter(c => c.tel);
+  const list = reason === 'contacts' ? [...shown].sort((a, b) => !!b.counseling - !!a.counseling) : shown;
 
   render(`
     <h1>${title}</h1>
@@ -726,11 +808,12 @@ SCREENS.crisis = function crisis(reason) {
       <div class="card">
         <div class="crisis-card">
           <div><div class="name">${c.name}</div><div class="small">${c.desc}</div></div>
-          ${c.tel ? `<a class="call" href="tel:${c.tel}">${c.tel}</a>` : `<span class="call off">번호 등록 예정</span>`}
+          <a class="call" href="tel:${c.tel}">${c.tel}</a>
         </div>
       </div>`).join('')}
 
-    <p class="small" style="margin-top:16px">Re:link는 치료를 대체하지 않아요. 상담이 필요하면 학교 학생상담센터를 이용해 주세요.</p>
+    <p class="small" style="margin-top:16px">Re:link는 일부 표현만 알아챌 수 있어요. 알아채지 못했더라도 힘들다면 언제든 위 번호로 연락하세요.</p>
+    <p class="small" style="margin-top:8px">Re:link는 치료를 대체하지 않아요. 상담이 필요하면 학교 학생상담센터를 이용해 주세요.</p>
     <button class="btn ghost" data-go="home">처음으로</button>
   `);
 };
@@ -739,13 +822,11 @@ SCREENS.crisis = function crisis(reason) {
 function loadDemo() {
   const now = Date.now();
   const ago = d => new Date(now - d * DAY).toISOString();
-  store = EMPTY_STORE();
-  store.demo = true;
-  store.code = { code: 'DS2026', startedAt: ago(13) };
   const rec = (d, id, energy, done, mood, barrier) => {
     const p = findItem(id);
-    return { id, name: p.name, energy, purpose: 'connect', at: ago(d), checkedAt: ago(d - 0.2), done, mood, barrier, note: '' };
+    return { id, name: p.name, energy, purpose: 'connect', at: ago(d), checkedAt: ago(d - 0.2), done, mood, barrier };
   };
+  enterDemo({ code: { code: 'DS2026', startedAt: ago(13) }, nextEnergy: 3 });
   store.history = [
     rec(12, 'ssangmunlib', 1, true, 1, null),
     rec(10, 'ssangmunpark', 1, false, null, '혼자 가기 어색했어요'),
@@ -753,7 +834,6 @@ function loadDemo() {
     rec(5, 'dooly', 2, true, 3, null),
     rec(2, 'peace', 2, true, 4, null),
   ];
-  store.nextEnergy = 3;
   form = { ...EMPTY_FORM(), purpose: 'connect' };
   save();
 }

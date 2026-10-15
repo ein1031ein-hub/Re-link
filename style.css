@@ -166,3 +166,17 @@ textarea:focus { outline: none; border-color: var(--accent); }
 
 .demo-links { margin-top: 20px; display: flex; justify-content: center; gap: 4px; }
 .demo-links .link { width: auto; font-size: 12.5px; }
+
+/* ── 시연 모드 띠 · 연락처 한 줄 ── */
+.topbar { flex-wrap: wrap; row-gap: 8px; }
+.band {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  background: var(--ink); color: #fff; font-size: 13px; font-weight: 600;
+  padding: 8px 12px; border-radius: 10px;
+}
+.band[hidden] { display: none; }
+.band button { color: #fff; text-decoration: underline; text-underline-offset: 3px; font-size: 13px; font-weight: 700; }
+.helpline { margin-top: 14px; text-align: center; font-size: 13px; color: var(--muted); }
+.helpline a { color: var(--accent); font-weight: 700; }
+.scenario { border-style: dashed; }
+.center { text-align: center; }

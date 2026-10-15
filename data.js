@@ -6,6 +6,7 @@
 // 관심사 키: create(창작) nature(자연) move(움직임) rest(쉼) learn(배움) social(사람·모임)
 // 생활권 키: school(학교 근처·쌍문동) home(조금 멀리·도봉동) online(오늘은 집에서)
 // hours: 요일별 운영시간. 0=일 1=월 ... 6=토. 11.5 = 11:30. 없으면 null(방문 전 확인 필요)
+// daylight: true 면 야외 활동이라 18:00 이후·06:00 이전에는 추천하지 않는다
 // travel: 덕성여대 기준 이동 시간 (예: '버스 9분'). null 이면 '확인 중'으로 표시
 
 const INTERESTS = {
@@ -77,14 +78,6 @@ const PLACES = [
     why: '수초 어항을 보며 차를 마시는 곳. 말없이 머물러도 괜찮아요.',
   },
   {
-    id: 'youthhouse', area: 'school', name: '쌍문동 청소년문화의집', interests: ['learn', 'move'],
-    energy: [2, 3], minutes: 60, travel: null, social: true,
-    hours: { 0: [9, 18], 2: [9, 21], 3: [9, 21], 4: [9, 21], 5: [9, 21], 6: [9, 21] },
-    hoursText: '화~토 09:00~21:00 · 일 09:00~18:00',
-    why: '프로그램에 참여하면서 자연스럽게 사람들과 어울릴 수 있어요.',
-    note: '대학생 이용 가능 여부 확인 필요',
-  },
-  {
     id: 'ssangmunlib', area: 'school', name: '쌍문채움도서관', interests: ['rest', 'learn'],
     energy: [1, 1], minutes: 40, travel: null,
     hours: { 0: [9, 17], 2: [9, 20], 3: [9, 20], 4: [9, 20], 5: [9, 20], 6: [9, 17] },
@@ -93,7 +86,7 @@ const PLACES = [
   },
   {
     id: 'ssangmunpark', area: 'school', name: '쌍문근린공원', interests: ['nature'],
-    energy: [1, 2], minutes: 30, travel: null, hours: 'always', hoursText: '상시 개방 (공원)',
+    energy: [1, 2], minutes: 30, travel: null, hours: 'always', daylight: true, hoursText: '상시 개방 (공원)',
     why: '나무 사이를 30분 걷는 것만으로도 머리가 가벼워져요.',
   },
   // TODO 쌍문동 에너지 높음(3) 장소 추가 자리
@@ -138,12 +131,12 @@ const PLACES = [
   },
   {
     id: 'musugol', area: 'home', name: '무수골 산책길', interests: ['nature', 'move'],
-    energy: [2, 3], minutes: 60, hours: 'always', hoursText: '상시 (산책로)',
+    energy: [2, 3], minutes: 60, hours: 'always', daylight: true, hoursText: '상시 (산책로)',
     why: '계곡 옆길을 따라 걷는 한 시간짜리 코스예요.',
   },
   {
     id: 'dobongsan', area: 'home', name: '도봉산 짧은 등산', interests: ['nature', 'move'],
-    energy: [3, 3], minutes: 120, hours: 'always', hoursText: '일몰 전 하산 권장',
+    energy: [3, 3], minutes: 120, hours: 'always', daylight: true, hoursText: '일몰 전 하산 권장',
     why: '몸을 크게 움직이고 정상에서 바람을 맞는 경험이에요.',
   },
   {
@@ -225,7 +218,8 @@ const PLACES = [
 ];
 
 // 지역 프로그램 (일정이 있는 활동). 도봉문화재단 2026.10.15 기준 모집 공고.
-// period: [접수 시작, 접수 마감] (그날 포함). 마감이 지나면 자동으로 숨겨진다.
+// period: [시작, 마감] (그날 포함). 마감이 지나면 자동으로 숨겨진다.
+// periodLabel: period 가 무슨 기간인지. 없으면 '접수'. 전시는 '전시'.
 const DBFAC_APPLY = 'https://www.dbfac.or.kr/front/supportManageReq/supportManageListPage.do';
 const PROGRAMS = [
   {
@@ -240,7 +234,7 @@ const PROGRAMS = [
   },
   {
     id: 'prog-exhibit', type: 'program', name: "「도봉쓰담」 전시 '도봉을 쓰다, 도봉을 담다'", place: '도봉문화재단',
-    interests: ['create'], energy: [1, 2], period: ['2026-11-01', '2026-11-30'],
+    interests: ['create'], energy: [1, 2], period: ['2026-11-01', '2026-11-30'], periodLabel: '전시',
     applyUrl: DBFAC_APPLY, why: '우리 동네 이야기를 담은 전시. 천천히 구경만 해도 좋아요.',
   },
   {
@@ -251,20 +245,25 @@ const PROGRAMS = [
 ];
 
 // 위기 연결처. 번호는 배포 전 반드시 재확인할 것.
-// tel 이 null 이면 앱에 "번호 등록 예정"으로 표시된다.
+// tel 이 null 인 항목은 화면에 보이지 않는다. 번호를 채우면 코드 수정 없이 자동으로 표시된다.
+// counseling: true 는 회송 화면의 "상담센터 연락처 보기" 대상 (번호가 있을 때만)
 const CRISIS_CONTACTS = [
   { name: '자살예방상담전화', desc: '24시간 · 전국', tel: '109' },
-  { name: '정신건강위기상담전화', desc: '24시간 · 전국', tel: '1577-0199' },
-  { name: '덕성여대 학생상담센터', desc: '재학생 상담 · 평일', tel: null },
+  { name: '정신건강위기상담전화', desc: '24시간 · 전국', tel: '1577-0199' }, // 배포 전 재확인
+  { name: '덕성여대 학생상담센터(덕우당)', desc: '재학생 상담', tel: '02-901-8506', counseling: true },
   { name: '도봉구정신건강복지센터', desc: '쌍문동 소재', tel: null },
 ];
 
 // 위기 감지 키워드 (규칙 기반. AI를 거치지 않는다)
+// 비교할 때 입력과 키워드 모두 공백을 지우고 비교한다 ('죽 고 싶 다'도 감지).
 // 일상 표현과 겹치는 단어(손목, 목숨, 극단적)는 오탐이 많아서 뺐다.
+// 오탐("배고파 죽을래" 등)은 바로 넘기지 않고 한 번 묻는 흐름이라 허용한다.
+// 한계: "다 끝났으면", "내일이 안 왔으면"처럼 돌려 말하는 표현은 감지하지 못한다.
 const CRISIS_KEYWORDS = [
   '죽고 싶', '죽고싶', '자살', '자해', '사라지고 싶', '사라지고싶', '없어지고 싶', '없어지고싶',
   '끝내고 싶', '끝내고싶', '살기 싫', '살기싫', '죽어버리', '뛰어내리',
   '유서', '죽을래', '죽는 게 나', '죽는게 나',
+  '살고싶지않', '그만살고', '사라졌으면', '없어졌으면', '죽고시퍼', '죽고싶어', '살아서뭐해', '살이유가없',
 ];
 
 // 자유 입력에서 태그를 뽑는 규칙 (규칙 기반 키워드 추출)
