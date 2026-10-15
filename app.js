@@ -51,7 +51,30 @@ function exitDemo() {
 let crisisSeen = false;
 
 // 현재 입력 상태
-const EMPTY_FORM = () => ({ purpose: null, energy: null, area: null, interests: [], text: '', ackWords: [] });
+// energy·area·interests 는 resolveForm() 이 계산한 최종값.
+// 우선순위: 사용자가 직접 누른 값(pick) > 글에서 찾은 값(fromText) > 앱이 미리 골라둔 값(preset)
+const EMPTY_FORM = () => ({
+  purpose: null, energy: null, area: null, interests: [], text: '', ackWords: [],
+  pick: { energy: null, area: null }, preset: { energy: null, area: null },
+  userInterests: [], fromText: { energy: null, area: null, interests: [] }, dismissed: [],
+});
+function resolveForm(f = form) {
+  f.energy = f.pick.energy ?? f.fromText.energy ?? f.preset.energy ?? null;
+  f.area = f.pick.area ?? f.fromText.area ?? f.preset.area ?? null;
+  f.interests = [...new Set([...f.userInterests, ...f.fromText.interests])];
+}
+// 글에서 찾은 태그 반영. 사용자가 해제한 태그(dismissed)는 빼고, 글에서 사라진 태그는 해제 기록도 지운다.
+function applyTextTags(f = form) {
+  const t = extractTags(f.text);
+  const keys = [t.energy && 'energy', t.area && 'area', ...t.interests.map(i => 'i:' + i)].filter(Boolean);
+  f.dismissed = f.dismissed.filter(k => keys.includes(k));
+  f.fromText = {
+    energy: f.dismissed.includes('energy') ? null : t.energy,
+    area: f.dismissed.includes('area') ? null : t.area,
+    interests: t.interests.filter(i => !f.dismissed.includes('i:' + i) && !f.userInterests.includes(i)),
+  };
+  resolveForm(f);
+}
 let form = EMPTY_FORM();
 let lastResult = { items: [], programs: [], prepOnly: false, emptyReason: null };
 
@@ -64,6 +87,8 @@ const findItem = id => PLACES.find(p => p.id === id) || PROGRAMS.find(p => p.id 
 const fmtDate = iso => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
 const fmtHour = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
 const demoTag = '<span class="tag gray">시연용</span>';
+// 마지막 글자에 받침이 있는지 (을/를 고르기)
+const hasBatchim = word => { const c = word.charCodeAt(word.length - 1) - 0xac00; return c >= 0 && c <= 11171 && c % 28 !== 0; };
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC[c]);
 
@@ -100,6 +125,22 @@ function needsCrisisCheck(text, acked = []) {
 }
 
 // ── 자유 입력 → 태그 추출 (규칙 기반) ──
+// 키워드 뒤 같은 마디 안(최대 10글자)에 부정 표현이 오면 그 관심사는 빼고 본다. 예) "사람 만나기 싫어"
+const NEGATION = /싫|않|안 |없/;
+const CLAUSE_END = /[,.!?~\n]|는데|지만|한데/;
+function negatedAfter(text, from) {
+  let tail = text.slice(from, from + 10);
+  const cut = tail.search(CLAUSE_END);
+  if (cut !== -1) tail = tail.slice(0, cut);
+  return NEGATION.test(tail);
+}
+function mentioned(text, word, checkNegation) {
+  for (let i = text.indexOf(word); i !== -1; i = text.indexOf(word, i + 1)) {
+    if (!checkNegation || !negatedAfter(text, i + word.length)) return true;
+  }
+  return false;
+}
+
 function extractTags(text) {
   const found = { energy: null, area: null, interests: [] };
   if (!text) return found;
@@ -107,7 +148,7 @@ function extractTags(text) {
     if (words.some(w => text.includes(w))) found.energy = Number(level);
   }
   for (const [key, words] of Object.entries(TAG_RULES.interests)) {
-    if (words.some(w => text.includes(w))) found.interests.push(key);
+    if (words.some(w => mentioned(text, w, true))) found.interests.push(key);
   }
   for (const [key, words] of Object.entries(TAG_RULES.area)) {
     if (words.some(w => text.includes(w))) found.area = key;
@@ -128,6 +169,20 @@ function openStatus(place, now = new Date()) {
   if (h >= today[1]) return { open: false, closedToday: true, label: '오늘 운영 종료' };
   if (h + place.minutes / 60 > today[1]) return { open: true, label: `${fmtHour(today[1])} 마감 · 서두르면 가능` };
   return { open: true, label: `지금 운영 중 · ${fmtHour(today[1])}까지` };
+}
+
+// 방문 전 체크: 아는 값만 보여준다
+function visitChecks(p) {
+  return [
+    p.free === true && '무료', p.free === false && '유료',
+    p.reserve === true && '예약 필요', p.reserve === false && '예약 없이 가능',
+    !p.social && '혼자 가도 편해요',
+  ].filter(Boolean);
+}
+// 정보 확인일·출처 (모르면 '확인 중')
+function sourceLine(p) {
+  const when = p.checked ? `${fmtDate(p.checked + 'T00:00')} 확인` : '확인일 확인 중';
+  return `<p class="src">${when} · ${p.source ? esc(p.source) : '출처 확인 중'}</p>`;
 }
 
 function travelText(p) {
@@ -224,6 +279,7 @@ function match(f) {
     .slice(0, 2);
 
   return {
+    computed: true,
     items: items.map(s => ({ ...s, reason: makeReason(s, f) })),
     programs,
     prepOnly,
@@ -249,8 +305,25 @@ function render(html) {
   window.scrollTo(0, 0);
 }
 
+// 화면 이동은 주소 끝(#input, #result …)으로 기록해서 폰의 뒤로 가기가 앱 안에서 동작하게 한다
 const SCREENS = {};
-function go(screen, arg) { (SCREENS[screen] || SCREENS.home)(arg); }
+const hashOf = (screen, arg) => `#${screen}${arg != null && arg !== '' ? '/' + encodeURIComponent(arg) : ''}`;
+function show(screen, arg) { (SCREENS[screen] || SCREENS.home)(arg); }
+function go(screen, arg) {
+  const h = hashOf(screen, arg);
+  if (location.hash === h) show(screen, arg);
+  else location.hash = h; // hashchange → route()
+}
+// 지금 기록을 남기지 않고 다른 화면으로 바꾼다 (볼 수 없는 화면에 뒤로 가기로 들어왔을 때)
+function redirect(screen, arg) {
+  history.replaceState(null, '', hashOf(screen, arg));
+  show(screen, arg);
+}
+function route() {
+  const [screen, arg] = location.hash.slice(1).split('/');
+  show(screen || 'home', arg != null ? decodeURIComponent(arg) : undefined);
+}
+window.addEventListener('hashchange', route);
 
 document.addEventListener('click', e => {
   if (e.target.closest('#demoExit')) { exitDemo(); go('home'); return; }
@@ -368,7 +441,8 @@ SCREENS.code = function code() {
 SCREENS.input = function input() {
   const c = codeInfo();
   if (!form.purpose && c) form.purpose = c.purpose;
-  if (!form.energy && store.nextEnergy) form.energy = store.nextEnergy;
+  if (form.preset.energy == null && store.nextEnergy) form.preset.energy = store.nextEnergy;
+  resolveForm();
   const hint = (store.nextEnergy
     ? `<div class="banner">지난 체크인을 바탕으로 에너지 <b>${ENERGY[store.nextEnergy].label}</b>를 먼저 골라뒀어요. 오늘 상태에 맞게 바꿔도 돼요.</div>`
     : '') + (lastBarrier() === '너무 멀었어요'
@@ -377,18 +451,8 @@ SCREENS.input = function input() {
 
   render(`
     <h1>요즘 어때요?</h1>
-    <p class="lead">한 줄로 적어도 되고, 아래 버튼만 골라도 돼요.</p>
+    <p class="lead">버튼으로 고르고, 원하면 한 줄로 적어도 돼요.</p>
     ${hint}
-
-    <h2>요즘 가장 필요한 건?</h2>
-    ${c ? `<p class="small" style="margin:-4px 0 8px">상담센터가 정한 목적을 먼저 골라뒀어요. ${demoTag}</p>` : ''}
-    <div class="choices two" id="purpose">
-      ${Object.entries(PURPOSES).map(([k, p]) => `<button class="chip" data-v="${k}">${p.label}</button>`).join('')}
-    </div>
-
-    <h2>한 줄로 말하기 <span class="small">(선택)</span></h2>
-    <textarea id="free" placeholder="예) 수업 끝나고 너무 지쳐서 혼자 조용히 쉬고 싶어">${esc(form.text)}</textarea>
-    <div class="tagline" id="tags"></div>
 
     <h2>오늘 에너지</h2>
     <div class="choices three" id="energy">
@@ -400,11 +464,22 @@ SCREENS.input = function input() {
       ${Object.entries(AREAS).map(([k, a]) => `<button class="chip" data-v="${k}">${a.label}<span class="sub">${a.sub}</span></button>`).join('')}
     </div>
 
+    <h2>요즘 가장 필요한 건?</h2>
+    ${c ? `<p class="small" style="margin:-4px 0 8px">상담센터가 정한 목적을 먼저 골라뒀어요. ${demoTag}</p>` : ''}
+    <div class="choices two" id="purpose">
+      ${Object.entries(PURPOSES).map(([k, p]) => `<button class="chip" data-v="${k}">${p.label}</button>`).join('')}
+    </div>
+
     <h2>이런 방식이면 좋겠어요 <span class="small">(선택)</span></h2>
     <div class="choices wrap" id="interests">
       ${Object.entries(INTERESTS).map(([k, l]) => `<button class="chip" data-v="${k}">${l}</button>`).join('')}
     </div>
 
+    <h2>한 줄로 말하기 <span class="small">(선택)</span></h2>
+    <textarea id="free" placeholder="예) 수업 끝나고 너무 지쳐서 혼자 조용히 쉬고 싶어">${esc(form.text)}</textarea>
+    <div class="tagline" id="tags"></div>
+
+    <p class="missing" id="missing"></p>
     <button class="btn" id="go">처방전 받기</button>
   `);
 
@@ -414,18 +489,48 @@ SCREENS.input = function input() {
     document.querySelectorAll('#area .chip').forEach(x => x.classList.toggle('on', x.dataset.v === form.area));
     document.querySelectorAll('#interests .chip').forEach(x => x.classList.toggle('on', form.interests.includes(x.dataset.v)));
     document.getElementById('go').disabled = !(form.purpose && form.energy && form.area);
+    // 아직 안 고른 필수 항목만 버튼 위에 알려준다
+    const missing = [!form.energy && '에너지', !form.area && '장소', !form.purpose && '필요한 것'].filter(Boolean);
+    document.getElementById('missing').textContent = missing.length
+      ? `${missing.join(', ')}${hasBatchim(missing[missing.length - 1]) ? '을' : '를'} 골라주세요` : '';
   };
-  const pickOne = (id, key, cast = v => v) => {
-    document.getElementById(id).onclick = e => { const x = e.target.closest('.chip'); if (x) { form[key] = cast(x.dataset.v); sync(); } };
+  // 글에서 찾은 태그 칩. 누르면 그 태그만 해제된다.
+  const renderTags = () => {
+    const f = form.fromText;
+    const chips = [];
+    if (f.energy && form.pick.energy == null) chips.push(`<button class="tag warm" data-k="energy">에너지 ${ENERGY[f.energy].label} ✕</button>`);
+    if (f.area && form.pick.area == null) chips.push(`<button class="tag warm" data-k="area">${AREAS[f.area].label} ✕</button>`);
+    f.interests.forEach(i => chips.push(`<button class="tag warm" data-k="i:${i}">${INTERESTS[i]} ✕</button>`));
+    document.getElementById('tags').innerHTML = chips.length
+      ? `<span class="small">글에서 찾은 것 →</span> ${chips.join('')}` : '';
   };
-  pickOne('purpose', 'purpose');
+  document.getElementById('tags').onclick = e => {
+    const x = e.target.closest('[data-k]'); if (!x) return;
+    form.dismissed.push(x.dataset.k);
+    applyTextTags(); renderTags(); sync();
+  };
+
+  // 사용자가 직접 누른 값은 글에서 찾은 값보다 우선한다
+  document.getElementById('purpose').onclick = e => { const x = e.target.closest('.chip'); if (x) { form.purpose = x.dataset.v; sync(); } };
+  const pickOne = (id, key, cast) => {
+    document.getElementById(id).onclick = e => {
+      const x = e.target.closest('.chip'); if (!x) return;
+      form.pick[key] = cast(x.dataset.v); resolveForm(); renderTags(); sync();
+    };
+  };
   pickOne('energy', 'energy', Number);
-  pickOne('area', 'area');
+  pickOne('area', 'area', v => v);
   document.getElementById('interests').onclick = e => {
     const x = e.target.closest('.chip'); if (!x) return;
     const v = x.dataset.v;
-    form.interests = form.interests.includes(v) ? form.interests.filter(i => i !== v) : [...form.interests, v];
-    sync();
+    if (form.interests.includes(v)) {
+      form.userInterests = form.userInterests.filter(i => i !== v);
+      if (form.fromText.interests.includes(v)) form.dismissed.push('i:' + v);
+    } else {
+      form.userInterests.push(v);
+      form.dismissed = form.dismissed.filter(k => k !== 'i:' + v);
+    }
+    applyTextTags(); renderTags(); sync();
   };
 
   const askCrisis = () => {
@@ -438,17 +543,7 @@ SCREENS.input = function input() {
     clearTimeout(timer);
     timer = setTimeout(() => {
       if (needsCrisisCheck(form.text, form.ackWords)) { askCrisis(); return; }
-      const t = extractTags(form.text);
-      const chips = [];
-      if (t.energy) { form.energy = t.energy; chips.push(`<span class="tag warm">에너지 ${ENERGY[t.energy].label}</span>`); }
-      if (t.area) { form.area = t.area; chips.push(`<span class="tag warm">${AREAS[t.area].label}</span>`); }
-      t.interests.forEach(i => {
-        if (!form.interests.includes(i)) form.interests.push(i);
-        chips.push(`<span class="tag warm">${INTERESTS[i]}</span>`);
-      });
-      document.getElementById('tags').innerHTML = chips.length
-        ? `<span class="small">글에서 찾은 태그 →</span> ${chips.join('')}` : '';
-      sync();
+      applyTextTags(); renderTags(); sync();
     }, 400);
   };
 
@@ -457,6 +552,7 @@ SCREENS.input = function input() {
     lastResult = match(form);
     go('result');
   };
+  renderTags();
   sync();
 };
 
@@ -474,6 +570,8 @@ function confirmCrisis(onContinue) {
 
 // ③ 처방전
 SCREENS.result = function result() {
+  // 뒤로 가기로 들어왔는데 처방전을 다시 그릴 정보가 없으면 입력 화면으로
+  if (!lastResult.computed || !form.purpose || !form.energy || !form.area) return redirect('input');
   const f = form;
   const { items, programs, prepOnly, emptyReason } = lastResult;
   const purposeLabel = PURPOSES[f.purpose].label;
@@ -500,6 +598,7 @@ SCREENS.result = function result() {
         <div><b>활동</b>약 ${p.minutes}분</div>
         ${travel ? `<div><b>이동</b>${travel}</div>` : ''}
         ${p.inApp ? '' : `<div><b>운영</b>${p.hoursText}</div>`}
+        ${!p.inApp && visitChecks(p).length ? `<div><b>방문 전</b>${visitChecks(p).join(' · ')}</div>` : ''}
         <div><b>지금</b><span class="${r.status.open === false ? 'closed' : r.status.open ? 'open' : ''}">${r.status.label}</span></div>
       </div>
       ${p.note ? `<div class="note">※ ${p.note}</div>` : ''}
@@ -511,6 +610,7 @@ SCREENS.result = function result() {
           : `<a class="btn ghost" href="https://map.naver.com/p/search/${encodeURIComponent(p.name.replace(/\s*\(.*\)/, ''))}" target="_blank" rel="noopener">지도 보기</a>`}
         <button class="btn" data-pick="${p.id}">이걸로 할게요</button>
       </div>
+      ${p.inApp ? '' : sourceLine(p)}
     </div>`;
   };
 
@@ -530,6 +630,7 @@ SCREENS.result = function result() {
         <a class="btn ghost" href="${x.prog.applyUrl}" target="_blank" rel="noopener">신청 페이지</a>
         <button class="btn" data-pick="${x.prog.id}">이걸로 할게요</button>
       </div>
+      ${sourceLine(x.prog)}
     </div>`;
 
   render(`
@@ -559,7 +660,7 @@ SCREENS.result = function result() {
     ${crisisSeen ? helpLine() : ''}
   `);
 
-  const reArea = area => { form.area = area; lastResult = match(form); go('result'); };
+  const reArea = area => { form.pick.area = area; resolveForm(); lastResult = match(form); go('result'); };
   const ts = document.getElementById('toSchool'); if (ts) ts.onclick = () => reArea('school');
   const th = document.getElementById('toHome'); if (th) th.onclick = () => reArea('home');
 
@@ -574,7 +675,7 @@ SCREENS.result = function result() {
 // 앱 안 처방 가이드
 SCREENS.guide = function guide(id) {
   const p = findItem(id);
-  if (!p || !p.steps) return go('home');
+  if (!p || !p.steps) return redirect('home');
   render(`
     <h1>${p.name}</h1>
     <p class="lead">${p.why}</p>
@@ -593,11 +694,18 @@ SCREENS.guide = function guide(id) {
 };
 
 // ④ 참여 체크인 → 다음 처방 단계 조정 (행동활성화: 작게 성공하고 한 단계씩 올리기)
+// 장벽별 안내 문구. 여기 적힌 약속은 실제로 다음 추천에 반영된다 (scoreItem, makeReason, finishCheckin).
+const BARRIER_LINES = {
+  '혼자 가기 어색했어요': '혼자서도 편한 곳 위주로 골라볼게요.',
+  '너무 멀었어요': '다음엔 학교 근처를 먼저 골라둘게요.',
+  '문이 닫혀 있었어요': '알려줘서 고마워요. 이 기기에서는 다음 추천 때 뒤로 미뤄둘게요.',
+};
+let referralNote = null;
 const BARRIERS = ['시간이 없었어요', '너무 멀었어요', '기운이 없었어요', '혼자 가기 어색했어요', '문이 닫혀 있었어요'];
 
 SCREENS.checkin = function checkin() {
   const a = store.active;
-  if (!a) return go('home');
+  if (!a) return redirect('home');
   const c = { done: null, mood: null, barrier: null, text: '' };
 
   render(`
@@ -669,13 +777,11 @@ function finishCheckin(a, c) {
   } else {
     next = Math.max(1, lv - 1);
     msg = '괜찮아요. 다음엔 조금 더 가벼운 처방으로 시작해요.';
-    if (c.barrier === '혼자 가기 어색했어요') msg += '<br>혼자서도 편한 곳 위주로 골라볼게요.';
-    if (c.barrier === '너무 멀었어요') msg += '<br>다음엔 학교 근처를 먼저 골라둘게요.';
-    if (c.barrier === '문이 닫혀 있었어요') {
-      store.reports[a.id] = new Date().toISOString();
-      msg += '<br>알려줘서 고마워요. 이 기기에서는 다음 추천 때 뒤로 미뤄둘게요.';
-    }
+    if (c.barrier === '문이 닫혀 있었어요') store.reports[a.id] = new Date().toISOString();
+    if (BARRIER_LINES[c.barrier]) msg += '<br>' + BARRIER_LINES[c.barrier];
   }
+  // 회송 화면으로 넘어가도 방금 고른 장벽에 대한 안내는 한 줄로 보여준다
+  referralNote = (!c.done && BARRIER_LINES[c.barrier]) || null;
   if (c.done && c.mood === 0) crisisSeen = true;
 
   // 한 줄 메모(c.text)는 위기 표현 확인에만 쓰고 저장하지 않는다
@@ -683,7 +789,11 @@ function finishCheckin(a, c) {
   store.active = null;
   store.nextEnergy = next;
   save();
-  form = { ...EMPTY_FORM(), purpose: form.purpose, area: c.barrier === '너무 멀었어요' ? 'school' : form.area, interests: form.interests };
+  // 다음 입력: 목적과 직접 고른 방식은 유지, 생활권은 미리 골라둔 값으로 (멀었다면 학교 근처)
+  const prev = form;
+  form = { ...EMPTY_FORM(), purpose: prev.purpose, userInterests: [...prev.userInterests] };
+  form.preset.area = c.barrier === '너무 멀었어요' ? 'school' : prev.area;
+  resolveForm();
 
   if (needsReferral()) return go('referral', lv);
 
@@ -711,6 +821,7 @@ SCREENS.referral = function referral(lv) {
     <h1>혼자 애쓰지 않아도 돼요</h1>
     <div class="card">
       <p>최근 처방이 조금 버거웠던 것 같아요. 처방을 바꾸는 것도 좋지만, 상담 선생님과 한번 이야기해보면 어때요?</p>
+      ${referralNote ? `<p class="small" style="margin-top:10px">${referralNote}</p>` : ''}
     </div>
     ${counselingContact()
       ? '<button class="btn" data-go="crisis" data-arg="contacts">상담센터 연락처 보기</button>'
@@ -723,7 +834,9 @@ SCREENS.referral = function referral(lv) {
   document.getElementById('lighter').onclick = () => {
     const base = Number(lv) || store.nextEnergy || 1;
     store.nextEnergy = Math.max(1, base - 1);
-    form.energy = store.nextEnergy;
+    form.pick.energy = null;
+    form.preset.energy = store.nextEnergy;
+    resolveForm();
     save();
     go('input');
   };
@@ -838,4 +951,4 @@ function loadDemo() {
   save();
 }
 
-go('home');
+route();

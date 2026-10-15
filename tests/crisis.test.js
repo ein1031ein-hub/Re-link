@@ -1,22 +1,7 @@
 // 위기 키워드 감지 테스트. 의존성 없음.
 // 실행: node tests/crisis.test.js
-// data.js 와 app.js 를 그대로 읽어서 실제 crisisWords() 를 시험한다 (화면 부분은 가짜 document 로 대신).
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
-
-const el = () => ({ innerHTML: '', hidden: false, value: '', style: {}, classList: { toggle() {} }, querySelectorAll: () => [], focus() {} });
-const mem = {};
-const ctx = vm.createContext({
-  document: { getElementById: el, addEventListener() {}, querySelectorAll: () => [] },
-  window: { scrollTo() {} },
-  localStorage: { getItem: k => mem[k] ?? null, setItem: (k, v) => { mem[k] = v; }, removeItem: k => { delete mem[k]; } },
-  confirm: () => true,
-  console,
-});
-const root = path.join(__dirname, '..');
-vm.runInContext(fs.readFileSync(path.join(root, 'data.js'), 'utf8'), ctx);
-vm.runInContext(fs.readFileSync(path.join(root, 'app.js'), 'utf8'), ctx);
+// data.js 와 app.js 를 그대로 읽어서 실제 crisisWords() 를 시험한다.
+const ctx = require('./load-app')();
 
 const cases = [
   // [입력, 기대: 'yes' 감지 / 'no' 미감지 / 'limit' 미감지 허용(한계)]

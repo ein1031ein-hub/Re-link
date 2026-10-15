@@ -8,6 +8,9 @@
 // hours: 요일별 운영시간. 0=일 1=월 ... 6=토. 11.5 = 11:30. 없으면 null(방문 전 확인 필요)
 // daylight: true 면 야외 활동이라 18:00 이후·06:00 이전에는 추천하지 않는다
 // travel: 덕성여대 기준 이동 시간 (예: '버스 9분'). null 이면 '확인 중'으로 표시
+// checked: 정보를 마지막으로 확인한 날 ('2026-10-15'), source: 출처 ('구글지도', '네이버지도', '기관 홈페이지', '도봉문화재단')
+// free: 무료 true / 유료 false / 모름 null, reserve: 예약 필요 true / 필요 없음 false / 모름 null
+// 모르는 값은 null 로 두면 카드에 표시되지 않는다 ('확인 중'으로 보임)
 
 const INTERESTS = {
   create: '창작',
@@ -60,22 +63,26 @@ const PLACES = [
     id: 'dooly', area: 'school', name: '둘리뮤지엄', interests: ['create', 'learn'],
     energy: [2, 2], minutes: 90, travel: null, hours: TUE_SUN(10, 18), hoursText: '화~일 10:00~18:00 · 월 휴관',
     why: '보기만 해도 되는 전시라서 부담 없이 기분을 바꿀 수 있어요.',
+    checked: null, source: null, free: null, reserve: null,
   },
   {
     id: 'hamsukhon', area: 'school', name: '함석헌기념관', interests: ['learn'],
     energy: [1, 2], minutes: 60, travel: null, hours: TUE_SUN(9, 18), hoursText: '화~일 09:00~18:00 · 월 휴관',
     why: '조용한 공간에서 천천히 둘러볼 수 있어요. 주민참여 프로그램도 열려요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
   {
     id: 'sseulmo', area: 'school', name: '쓸모의 발견 (독립서점)', interests: ['rest', 'learn'],
     energy: [1, 1], minutes: 40, travel: null, hours: { 2: [15, 20], 3: [15, 20], 4: [15, 20], 5: [15, 20] },
     hoursText: '화~금 15:00~20:00 · 주말·월 휴무',
     why: '작은 서점에서 책 한 권 넘겨보는 것만으로도 충분한 하루예요.',
+    checked: null, source: null, free: null, reserve: null,
   },
   {
     id: 'youngplants', area: 'school', name: '영플랜츠앤갤러리영', interests: ['rest', 'nature'],
     energy: [1, 1], minutes: 45, travel: null, hours: null, hoursText: '방문 전 운영시간 확인',
     why: '수초 어항을 보며 차를 마시는 곳. 말없이 머물러도 괜찮아요.',
+    checked: null, source: null, free: null, reserve: null,
   },
   {
     id: 'ssangmunlib', area: 'school', name: '쌍문채움도서관', interests: ['rest', 'learn'],
@@ -83,11 +90,13 @@ const PLACES = [
     hours: { 0: [9, 17], 2: [9, 20], 3: [9, 20], 4: [9, 20], 5: [9, 20], 6: [9, 17] },
     hoursText: '화~금 09:00~20:00 · 주말 ~17:00 · 월 휴관',
     why: '조용하고 머물기 편한 공공 공간이에요. 근처 작은도서관도 좋아요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
   {
     id: 'ssangmunpark', area: 'school', name: '쌍문근린공원', interests: ['nature'],
     energy: [1, 2], minutes: 30, travel: null, hours: 'always', daylight: true, hoursText: '상시 개방 (공원)',
     why: '나무 사이를 30분 걷는 것만으로도 머리가 가벼워져요.',
+    checked: null, source: null, free: null, reserve: null,
   },
   // TODO 쌍문동 에너지 높음(3) 장소 추가 자리
   // 학교 근처에서 에너지 높음을 고르면 지금은 조용한 곳 위주로 나온다.
@@ -100,12 +109,14 @@ const PLACES = [
     id: 'peace', area: 'home', name: '평화문화진지', interests: ['create', 'learn'],
     energy: [2, 2], minutes: 90, hours: TUE_SUN(9, 18), hoursText: '화~일 09:00~18:00 · 월 휴관 · 전시 무료',
     why: '무료 전시와 공예 프로그램이 있어요. 구경만 해도, 직접 만들어도 좋아요.',
+    checked: '2026-10-15', source: '구글지도', free: true, reserve: null,
   },
   {
     id: 'wood', area: 'home', name: '도봉구 희망목재문화체험장', interests: ['create'],
     energy: [3, 3], minutes: 120, social: true, hours: null,
     hoursText: '서울시공공서비스예약으로 예약',
     why: '손으로 무언가를 완성하는 경험은 "해냈다"는 감각을 돌려줘요.',
+    checked: null, source: null, free: null, reserve: true,
     note: '‘도봉산목재문화체험장’으로 이름이 바뀌었을 수 있음',
   },
   {
@@ -114,6 +125,7 @@ const PLACES = [
     hours: { 0: [9, 21], 1: [10, 22], 2: [10, 22], 3: [10, 22], 4: [10, 22], 5: [10, 22], 6: [10, 22] },
     hoursText: '월~토 10:00~22:00 · 일 09:00~21:00',
     why: '등산로 입구에서 산을 바라보며 쉬어갈 수 있어요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
   {
     id: 'dada', area: 'home', name: '전통찻집 다다카페 (구 인아찻집)', interests: ['rest'],
@@ -121,6 +133,7 @@ const PLACES = [
     hours: { 0: [12, 22], 1: [11.5, 22], 2: [11.5, 22], 3: [11.5, 22], 4: [11.5, 22], 5: [11.5, 22], 6: [12, 22] },
     hoursText: '평일 11:30~22:00 · 주말 12:00~22:00',
     why: '따뜻한 차 한 잔과 함께 천천히 쉬어가는 시간이에요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
   {
     id: 'changpo', area: 'home', name: '서울창포원', interests: ['nature'],
@@ -128,22 +141,26 @@ const PLACES = [
     hours: { 0: [5, 21], 1: [5, 21], 2: [5, 21], 3: [5, 21], 4: [5, 21], 5: [5, 21], 6: [5, 21] },
     hoursText: '매일 05:00~21:00',
     why: '넓은 정원을 천천히 걸으며 계절을 느낄 수 있어요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
   {
     id: 'musugol', area: 'home', name: '무수골 산책길', interests: ['nature', 'move'],
     energy: [2, 3], minutes: 60, hours: 'always', daylight: true, hoursText: '상시 (산책로)',
     why: '계곡 옆길을 따라 걷는 한 시간짜리 코스예요.',
+    checked: null, source: null, free: null, reserve: null,
   },
   {
     id: 'dobongsan', area: 'home', name: '도봉산 짧은 등산', interests: ['nature', 'move'],
     energy: [3, 3], minutes: 120, hours: 'always', daylight: true, hoursText: '일몰 전 하산 권장',
     why: '몸을 크게 움직이고 정상에서 바람을 맞는 경험이에요.',
+    checked: null, source: null, free: null, reserve: null,
   },
   {
     id: 'pool', area: 'home', name: '도봉동실내스포츠센터 (수영)', interests: ['move'],
     energy: [3, 3], minutes: 60, hours: SPORTS_CENTER_HOURS,
     hoursText: '평일 06:00~22:00 · 토 ~18:00 · 일 09:00~18:00',
     why: '물속에서는 생각이 조용해져요. 몸이 먼저 기분을 바꿔줘요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
     note: '1·3·5주 일요일 휴관 · 자유수영 시간 별도 확인',
   },
   {
@@ -151,6 +168,7 @@ const PLACES = [
     energy: [3, 3], minutes: 60, social: true, hours: SPORTS_CENTER_HOURS,
     hoursText: '평일 06:00~22:00 · 토 ~18:00 · 일 09:00~18:00',
     why: '정해진 시간의 운동 프로그램은 일상에 리듬을 만들어줘요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
     note: '1·3·5주 일요일 휴관 · 자유수영 시간 별도 확인',
   },
   {
@@ -158,6 +176,7 @@ const PLACES = [
     energy: [1, 1], minutes: 40, hours: { 1: [9, 18], 2: [9, 18], 3: [9, 18], 4: [9, 18], 5: [9, 18] },
     hoursText: '월~금 09:00~18:00 · 주말 휴관',
     why: '작고 조용한 도서관. 창가 자리에서 잠깐 쉬어가요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
   {
     id: 'miraclelib', area: 'home', name: '도봉기적의도서관', interests: ['rest', 'learn'],
@@ -165,6 +184,7 @@ const PLACES = [
     hours: { 0: [9, 17], 1: [9, 20], 3: [9, 20], 4: [9, 20], 5: [9, 20], 6: [9, 17] },
     hoursText: '월·수~금 09:00~20:00 · 주말 ~17:00 · 화 휴관',
     why: '편하게 머물 수 있는 공공 공간이에요.',
+    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
 
   // ── 오늘은 집에서 (앱 안에서 바로 하는 준비 단계 처방) ──
@@ -225,22 +245,22 @@ const PROGRAMS = [
   {
     id: 'prog-poem', type: 'program', name: "함석헌기념관 주민참여 '詩월의 문학'", place: '함석헌기념관 (쌍문동)',
     interests: ['social', 'learn'], social: true, energy: [2, 3], period: ['2026-10-17', '2026-10-24'],
-    applyUrl: DBFAC_APPLY, why: '같은 관심사를 가진 동네 사람들과 시를 읽고 이야기하는 모임이에요.',
+    applyUrl: DBFAC_APPLY, checked: '2026-10-15', source: '도봉문화재단', why: '같은 관심사를 가진 동네 사람들과 시를 읽고 이야기하는 모임이에요.',
   },
   {
     id: 'prog-sseudam', type: 'program', name: '「도봉쓰담 읽고, 만들고, 잇다」', place: '도봉문화재단',
     interests: ['create', 'social'], social: true, energy: [2, 3], period: ['2026-11-19', '2026-11-28'],
-    applyUrl: DBFAC_APPLY, why: '읽고 만드는 과정을 함께하며 자연스럽게 사람과 이어져요.',
+    applyUrl: DBFAC_APPLY, checked: '2026-10-15', source: '도봉문화재단', why: '읽고 만드는 과정을 함께하며 자연스럽게 사람과 이어져요.',
   },
   {
     id: 'prog-exhibit', type: 'program', name: "「도봉쓰담」 전시 '도봉을 쓰다, 도봉을 담다'", place: '도봉문화재단',
     interests: ['create'], energy: [1, 2], period: ['2026-11-01', '2026-11-30'], periodLabel: '전시',
-    applyUrl: DBFAC_APPLY, why: '우리 동네 이야기를 담은 전시. 천천히 구경만 해도 좋아요.',
+    applyUrl: DBFAC_APPLY, checked: '2026-10-15', source: '도봉문화재단', why: '우리 동네 이야기를 담은 전시. 천천히 구경만 해도 좋아요.',
   },
   {
     id: 'prog-chilling', type: 'program', name: '칠링페스타 (공연)', place: '도봉문화재단',
     interests: ['create'], energy: [2, 3], period: ['2026-11-03', '2026-11-15'],
-    applyUrl: DBFAC_APPLY, why: '공연장에서 여러 사람과 같은 시간을 보내는 경험이에요.',
+    applyUrl: DBFAC_APPLY, checked: '2026-10-15', source: '도봉문화재단', why: '공연장에서 여러 사람과 같은 시간을 보내는 경험이에요.',
   },
 ];
 
@@ -268,6 +288,7 @@ const CRISIS_KEYWORDS = [
 
 // 자유 입력에서 태그를 뽑는 규칙 (규칙 기반 키워드 추출)
 // 한 글자 단어('책', '산')는 다른 단어 속에 섞여 오탐이 나서 쓰지 않는다.
+// 관심사는 키워드 뒤에 '싫', '않', '안 ', '없'이 오면 빼고 본다 (app.js negatedAfter).
 const TAG_RULES = {
   energy: {
     1: ['피곤', '지쳐', '지쳤', '지친', '무기력', '힘이 없', '기운 없', '기운이 없', '아무것도 하기 싫', '우울', '귀찮', '번아웃', '못 일어', '잠만'],
@@ -284,6 +305,6 @@ const TAG_RULES = {
   area: {
     online: ['집에만', '나가기 싫', '밖에 못', '방에', '집에서'],
     school: ['학교', '공강', '수업 끝', '캠퍼스'],
-    home: ['집 근처', '동네'],
+    // home(도봉동)은 사용자의 집과 무관해서 글에서 추출하지 않는다
   },
 };
