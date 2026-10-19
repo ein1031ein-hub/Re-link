@@ -465,7 +465,7 @@ SCREENS.input = function input() {
   if (form.preset.energy == null && store.nextEnergy) form.preset.energy = store.nextEnergy;
   resolveForm();
   const hint = (store.nextEnergy
-    ? `<div class="banner">지난 체크인을 바탕으로 에너지 <b>${ENERGY[store.nextEnergy].label}</b>를 먼저 골라뒀어요. 오늘 상태에 맞게 바꿔도 돼요.</div>`
+    ? `<div class="banner">지난 체크인을 바탕으로 에너지 <b>${ENERGY[store.nextEnergy].label}</b>을 먼저 골라뒀어요. 오늘 상태에 맞게 바꿔도 돼요.</div>`
     : '') + (lastBarrier() === '너무 멀었어요'
     ? '<div class="banner">지난번에 멀었다고 해서 학교 근처를 먼저 골라뒀어요. 바꿔도 돼요.</div>'
     : '');

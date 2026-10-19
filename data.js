@@ -25,7 +25,7 @@ const INTERESTS = {
 // 처방 목적 (상담센터가 정하거나 학생이 고른다)
 const PURPOSES = {
   connect: { label: '사람과 연결', reason: '사람들 사이에 자연스럽게 섞일 수 있는 활동이에요.' },
-  rhythm: { label: '생활에 리듬', reason: '정해진 시간에 다녀오면 하루에 리듬이 생겨요.' },
+  rhythm: { label: '생활 리듬 찾기', reason: '정해진 시간에 다녀오면 하루에 리듬이 생겨요.' },
   care: { label: '나를 돌보기', reason: '나에게 쉬어갈 틈을 주는 활동이에요.' },
   out: { label: '밖으로 나가기', reason: '문밖으로 한 걸음 나가는 것 자체가 처방이에요.' },
 };
