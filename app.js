@@ -208,6 +208,14 @@ function programStatus(prog, now = new Date()) {
 
 // ── 매칭 엔진 ──
 // DB에 있는 장소·프로그램만 고른다. 점수 = 에너지 적합도 + 처방 목적 + 관심사 + 운영 여부
+// 활동 시간 + 왕복 이동 시간(분). 하나라도 모르면 null
+function totalMinutes(p) {
+  if (p.inApp) return p.minutes || null;
+  const m = /(\d+)\s*분/.exec(p.travel || '');
+  const travel = m ? Number(m[1]) : (p.area === 'home' ? HOME_TRAVEL_MIN : null);
+  return p.minutes && travel ? p.minutes + travel * 2 : null;
+}
+
 function scoreItem(p, f) {
   let score = 0;
   const [min, max] = p.energy;
@@ -225,6 +233,11 @@ function scoreItem(p, f) {
   if (f.energy === 3 && p.social) score += 2;
   // 지난번 '혼자 가기 어색했어요' → 사람 만남이 있는 활동은 뒤로
   if (lastBarrier() === '혼자 가기 어색했어요' && p.social) score -= 4;
+  // 지난번 '시간이 없었어요' → 활동 + 왕복 이동이 짧은 곳 먼저 (모르면 그대로)
+  if (lastBarrier() === '시간이 없었어요') {
+    const t = totalMinutes(p);
+    if (t != null) score += t <= 60 ? 4 : t <= 90 ? 2 : t > 120 ? -3 : 0;
+  }
   return { score, hits };
 }
 
@@ -246,12 +259,15 @@ function match(f) {
     .sort((a, b) => b.score - a.score);
 
   // 같은 관심사만 3개 나오지 않도록 다양성 확보
+  // 관심사마다 1개까지. 단, 사용자가 직접 누른 관심사는 2개까지 허용
   const picked = [];
-  const usedMain = new Set();
+  const usedMain = {};
   for (const s of scored) {
     if (picked.length >= 3) break;
-    if (usedMain.has(s.place.interests[0]) && scored.length > 3) continue;
-    picked.push(s); usedMain.add(s.place.interests[0]);
+    const main = s.place.interests[0];
+    const limit = (f.userInterests || []).includes(main) ? 2 : 1;
+    if ((usedMain[main] || 0) >= limit && scored.length > 3) continue;
+    picked.push(s); usedMain[main] = (usedMain[main] || 0) + 1;
   }
   for (const s of scored) {
     if (picked.length >= 3) break;
@@ -291,6 +307,10 @@ function match(f) {
 function makeReason(s, f) {
   const parts = [];
   if (lastBarrier() === '혼자 가기 어색했어요' && !s.place.social) parts.push('혼자서도 편한 곳이에요.');
+  if (lastBarrier() === '시간이 없었어요') {
+    const t = totalMinutes(s.place);
+    if (t != null && t <= 90) parts.push(`짧게 다녀올 수 있는 곳이에요 (활동+왕복 약 ${t}분).`);
+  }
   parts.push(`에너지 ${ENERGY[f.energy].label}: ${ENERGY[f.energy].rule}.`);
   if (f.purpose === 'connect' && s.place.social) parts.push(PURPOSES.connect.reason);
   if (s.hits.length) parts.push(`고른 방식(${s.hits.map(h => INTERESTS[h]).join(', ')})에 맞아요.`);
@@ -700,6 +720,7 @@ SCREENS.guide = function guide(id) {
 const BARRIER_LINES = {
   '혼자 가기 어색했어요': '혼자서도 편한 곳 위주로 골라볼게요.',
   '너무 멀었어요': '다음엔 학교 근처를 먼저 골라둘게요.',
+  '시간이 없었어요': '다음엔 짧게 다녀올 수 있는 곳 위주로 골라볼게요.',
   '문이 닫혀 있었어요': '알려줘서 고마워요. 이 기기에서는 다음 추천 때 뒤로 미뤄둘게요.',
 };
 let referralNote = null;
@@ -844,6 +865,21 @@ SCREENS.referral = function referral(lv) {
   };
 };
 
+// 나에게 잘 맞았던 활동: 활동 종류(관심사)별 체크인 기분 평균. 2회 이상 기록된 종류만
+function bestFit(history) {
+  const byKind = {};
+  history.filter(h => h.done && h.mood != null).forEach(h => {
+    const item = findItem(h.id);
+    if (!item) return; // 삭제된 장소
+    item.interests.forEach(k => { (byKind[k] = byKind[k] || []).push(h.mood); });
+  });
+  const ranked = Object.entries(byKind)
+    .filter(([, moods]) => moods.length >= 2)
+    .map(([k, moods]) => ({ kind: k, n: moods.length, avg: moods.reduce((a, b) => a + b, 0) / moods.length }))
+    .sort((a, b) => b.avg - a.avg || b.n - a.n);
+  return ranked[0] || null;
+}
+
 // ⑤ 상담 선생님께 보여주기 (전송 없음, 학생이 직접 화면을 보여주는 방식)
 SCREENS.report = function report() {
   const c = codeInfo();
@@ -869,6 +905,16 @@ SCREENS.report = function report() {
         <div class="kv"><b>기간</b><span>${fmtDate(pr.start)}~${fmtDate(pr.end)} (${c.weeks}주)</span></div>
         <div class="kv"><b>참여</b><span><b class="em">${pr.goal}회 중 ${pr.done}회 참여</b></span></div>
         ${progressBar(pr.done, pr.goal)}` : `<div class="kv"><b>참여</b><span><b class="em">처방 ${hist.length}개 중 ${done.length}회 참여</b></span></div>`}
+    </div>
+
+    <div class="card">
+      <div class="rx-no">나에게 잘 맞았던 활동</div>
+      ${(() => {
+        const b = bestFit(hist);
+        return b
+          ? `<p style="margin-top:6px"><b class="em">${INTERESTS[b.kind]}</b> 활동을 했을 때 기분이 가장 좋았어요. <span class="small">(${b.n}회 · 기분 평균 ${MOODS[Math.round(b.avg)]})</span></p>`
+          : '<p class="small" style="margin-top:6px">같은 종류의 활동을 2번 이상 체크인하면 알려드려요.</p>';
+      })()}
     </div>
 
     <div class="card">
