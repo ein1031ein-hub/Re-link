@@ -187,10 +187,11 @@ function sourceLine(p) {
 
 function travelText(p) {
   if (p.inApp) return null;
+  if (p.travel) return `덕성여대에서 ${p.travel}`;
   if (p.area === 'home') {
     return HOME_TRAVEL_MIN ? `덕성여대에서 버스 약 ${HOME_TRAVEL_MIN}분 (도봉산역 방면)` : '덕성여대에서 버스 · 확인 중 (도봉산역 방면)';
   }
-  return p.travel ? `덕성여대에서 ${p.travel}` : '확인 중';
+  return '확인 중';
 }
 
 // 프로그램 접수 상태
