@@ -649,7 +649,7 @@ SCREENS.result = function result() {
         <button class="btn" id="toSchool">학교 근처에서 찾기</button>
       </div>` : ''}
     ${emptyReason === 'schoolHigh' ? `
-      <div class="banner">학교 근처의 활발한 활동은 아직 준비 중이에요. '조금 멀리 · 도봉동'에서 더 찾을 수 있어요.
+      <div class="banner">학교 근처의 활발한 활동은 아직 준비 중이에요. '조금 멀리 · 버스 40분대'에서 더 찾을 수 있어요.
         <button class="link" id="toHome" style="display:block;margin-top:6px">도봉동에서 찾기 →</button></div>` : ''}
     ${emptyReason === 'schoolSocial' ? `
       <div class="banner">학교 근처엔 사람과 함께하는 활동이 아직 적어요. 도봉동에서 더 찾아볼까요?

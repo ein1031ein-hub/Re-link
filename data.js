@@ -30,9 +30,10 @@ const PURPOSES = {
   out: { label: '밖으로 나가기', reason: '문밖으로 한 걸음 나가는 것 자체가 처방이에요.' },
 };
 
+// sub: 버튼 작은 글씨. 동네 이름 대신 덕성여대에서 걸리는 시간으로 표시한다
 const AREAS = {
-  school: { label: '학교 근처', sub: '쌍문동' },
-  home: { label: '조금 멀리', sub: '도봉동' },
+  school: { label: '학교 근처', sub: '버스 30분 이내' },
+  home: { label: '조금 멀리', sub: '버스 40분대' },
   online: { label: '오늘은 집에서', sub: '준비 단계' },
 };
 
