@@ -82,14 +82,6 @@ const PLACES = [
     checked: '2026-10-19', source: '네이버지도', free: null, reserve: null,
   },
   {
-    id: 'youngplants', area: 'school', name: '영플랜츠앤갤러리영', interests: ['rest', 'nature'],
-    energy: [1, 1], minutes: 45, travel: '버스 22분 (환승 1회)',
-    hours: { 0: [12, 19], 1: [11, 17], 2: [11, 17], 3: [11, 17], 4: [11, 17], 5: [11, 17], 6: [12, 19] },
-    hoursText: '평일 11:00~17:00 · 주말 12:00~19:00',
-    why: '수초 어항을 보며 차를 마시는 곳. 말없이 머물러도 괜찮아요.',
-    checked: '2026-10-19', source: '네이버지도', free: null, reserve: null,
-  },
-  {
     id: 'ssangmunlib', area: 'school', name: '쌍문채움도서관', interests: ['rest', 'learn'],
     energy: [1, 1], minutes: 40, travel: '버스 9분',
     hours: { 0: [9, 17], 2: [9, 20], 3: [9, 20], 4: [9, 20], 5: [9, 20], 6: [9, 17] },
@@ -177,15 +169,6 @@ const PLACES = [
     hoursText: '월~토 10:00~22:00 · 일 09:00~21:00',
     why: '등산로 입구에서 산을 바라보며 쉬어갈 수 있어요.',
     travel: null,
-    checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
-  },
-  {
-    id: 'dada', area: 'home', name: '전통찻집 다다카페 (구 인아찻집)', interests: ['rest'],
-    energy: [1, 1], minutes: 50,
-    hours: { 0: [12, 22], 1: [11.5, 22], 2: [11.5, 22], 3: [11.5, 22], 4: [11.5, 22], 5: [11.5, 22], 6: [12, 22] },
-    hoursText: '평일 11:30~22:00 · 주말 12:00~22:00',
-    why: '따뜻한 차 한 잔과 함께 천천히 쉬어가는 시간이에요.',
-    travel: '버스 28분 (환승 1회)',
     checked: '2026-10-15', source: '구글지도', free: null, reserve: null,
   },
   {
