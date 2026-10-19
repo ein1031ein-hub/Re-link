@@ -167,7 +167,7 @@ function openStatus(place, now = new Date()) {
   if (!today) return { open: false, closedToday: true, label: '오늘 휴무' };
   if (h < today[0]) return { open: false, label: `${fmtHour(today[0])}에 열어요` };
   if (h >= today[1]) return { open: false, closedToday: true, label: '오늘 운영 종료' };
-  if (h + place.minutes / 60 > today[1]) return { open: true, label: `${fmtHour(today[1])} 마감 · 서두르면 가능` };
+  if (h + (place.minutes || 0) / 60 > today[1]) return { open: true, label: `${fmtHour(today[1])} 마감 · 서두르면 가능` };
   return { open: true, label: `지금 운영 중 · ${fmtHour(today[1])}까지` };
 }
 
@@ -294,7 +294,7 @@ function makeReason(s, f) {
   parts.push(`에너지 ${ENERGY[f.energy].label}: ${ENERGY[f.energy].rule}.`);
   if (f.purpose === 'connect' && s.place.social) parts.push(PURPOSES.connect.reason);
   if (s.hits.length) parts.push(`고른 방식(${s.hits.map(h => INTERESTS[h]).join(', ')})에 맞아요.`);
-  parts.push(`약 ${s.place.minutes}분이면 충분해요.`);
+  if (s.place.minutes) parts.push(`약 ${s.place.minutes}분이면 충분해요.`);
   return parts.join(' ');
 }
 
@@ -596,9 +596,10 @@ SCREENS.result = function result() {
       <div class="rx-name">${p.name}</div>
       <div class="tagline">${p.interests.filter(x => x !== 'social').map(x => `<span class="tag">${INTERESTS[x]}</span>`).join('')}${p.social ? '<span class="tag warm">사람 만남</span>' : ''}</div>
       <div class="rx-meta">
-        <div><b>활동</b>약 ${p.minutes}분</div>
+        <div><b>활동</b>${p.minutes ? `약 ${p.minutes}분` : '클래스별 상이 · 확인 중'}</div>
         ${travel ? `<div><b>이동</b>${travel}</div>` : ''}
         ${p.inApp ? '' : `<div><b>운영</b>${p.hoursText}</div>`}
+        ${p.price ? `<div><b>가격</b>${esc(p.price)}</div>` : ''}
         ${!p.inApp && visitChecks(p).length ? `<div><b>방문 전</b>${visitChecks(p).join(' · ')}</div>` : ''}
         <div><b>지금</b><span class="${r.status.open === false ? 'closed' : r.status.open ? 'open' : ''}">${r.status.label}</span></div>
       </div>
@@ -608,7 +609,7 @@ SCREENS.result = function result() {
       <div class="rx-actions">
         ${p.inApp
           ? `<button class="btn ghost" data-go="guide" data-arg="${p.id}">방법 보기</button>`
-          : `<a class="btn ghost" href="https://map.naver.com/p/search/${encodeURIComponent(p.name.replace(/\s*\(.*\)/, ''))}" target="_blank" rel="noopener">지도 보기</a>`}
+          : `<a class="btn ghost" href="${p.link || `https://map.naver.com/p/search/${encodeURIComponent(p.name.replace(/\s*\(.*\)/, ''))}`}" target="_blank" rel="noopener">지도 보기</a>`}
         <button class="btn" data-pick="${p.id}">이걸로 할게요</button>
       </div>
       ${p.inApp ? '' : sourceLine(p)}

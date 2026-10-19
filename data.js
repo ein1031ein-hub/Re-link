@@ -11,6 +11,7 @@
 // checked: 정보를 마지막으로 확인한 날 ('2026-10-15'), source: 출처 ('구글지도', '네이버지도', '기관 홈페이지', '도봉문화재단')
 // free: 무료 true / 유료 false / 모름 null, reserve: 예약 필요 true / 필요 없음 false / 모름 null
 // 모르는 값은 null 로 두면 카드에 표시되지 않는다 ('확인 중'으로 보임)
+// price: 가격 안내 글 (있으면 카드에 '가격' 줄로 표시), link: 네이버 지도 등 장소 링크 (있으면 '지도 보기'가 이 링크로 열림)
 
 const INTERESTS = {
   create: '창작',
@@ -62,7 +63,8 @@ const PLACES = [
   {
     id: 'dooly', area: 'school', name: '둘리뮤지엄', interests: ['create', 'learn'],
     energy: [2, 2], minutes: 90, travel: '버스 19분', hours: TUE_SUN(10, 18), hoursText: '화~일 10:00~18:00 · 월 휴관',
-    note: '입장료 주중 4,000원 · 주말·공휴일 5,000원 (도봉구민 할인) · 1/1·설·추석 당일 휴관',
+    price: '주중 4,000원 · 주말·공휴일 5,000원 (도봉구민 할인)',
+    note: '1/1 · 설·추석 당일 휴관',
     why: '보기만 해도 되는 전시라서 부담 없이 기분을 바꿀 수 있어요.',
     checked: '2026-10-19', source: '네이버지도', free: false, reserve: null,
   },
@@ -100,6 +102,51 @@ const PLACES = [
     energy: [1, 2], minutes: 30, travel: '버스 10분', hours: 'always', daylight: true, hoursText: '상시 개방 (공원)',
     why: '나무 사이를 30분 걷는 것만으로도 머리가 가벼워져요.',
     checked: '2026-10-19', source: '네이버지도', free: null, reserve: null,
+  },
+  // ── 학교 근처 공방·원데이클래스 (2026-10-19 네이버지도) ──
+  // minutes: 클래스마다 달라서 모르면 null ('클래스별 상이 · 확인 중'으로 표시)
+  // 요일별 휴무를 모르는 곳은 hours: null 로 두고 시간만 hoursText 에 적는다 (쉬는 날 '운영 중'으로 뜨지 않게)
+  {
+    id: 'woodhour', area: 'school', name: '우드아워', interests: ['create'],
+    energy: [2, 3], minutes: null, travel: '버스 15분', hours: null, hoursText: '10:00~20:00 · 휴무일 변동',
+    checked: '2026-10-19', source: '네이버지도', free: false, reserve: null, price: '클래스별 35,000~55,000원',
+    why: '손으로 무언가를 완성하는 원데이 클래스예요.',
+    note: '휴무일이 바뀔 수 있어요 · 방문 전 확인',
+  },
+  {
+    id: 'sera', area: 'school', name: '세라 다이닝 도예공방', interests: ['create'],
+    energy: [2, 3], minutes: null, travel: '버스 14분', hours: null, hoursText: '10:00~22:00 · 휴무일 확인 필요',
+    checked: '2026-10-19', source: '네이버지도', free: false, reserve: null, price: '클래스별 45,000~70,000원',
+    why: '흙을 만지며 그릇을 빚는 도예 클래스예요.',
+  },
+  {
+    id: 'jangjiyoung', area: 'school', name: '장지영의 전통미술', interests: ['create', 'learn'],
+    energy: [2, 3], minutes: null, travel: '버스 12분',
+    hours: { 1: [10, 19], 2: [10, 19], 3: [10, 19], 4: [10, 19], 5: [10, 19], 6: [10, 19] },
+    hoursText: '월~토 10:00~19:00 · 일 휴무',
+    checked: '2026-10-19', source: '네이버지도', free: false, reserve: null, price: null, link: 'https://naver.me/5T4aenae',
+    why: '전통미술을 직접 그려보며 손끝에 집중하는 시간이에요.',
+  },
+  {
+    id: 'mokkoji', area: 'school', name: '모꼬지 공방', interests: ['create'],
+    energy: [2, 3], minutes: null, travel: '버스 18분', hours: null, hoursText: '18:00~22:00 · 예약제',
+    checked: '2026-10-19', source: '네이버지도', free: false, reserve: true, price: null, link: 'https://naver.me/xpjEls9s',
+    why: '수업 끝난 저녁에 들를 수 있는 공방이에요.',
+  },
+  {
+    id: 'ineung', area: 'school', name: '이능', interests: ['create', 'social'],
+    energy: [2, 3], minutes: null, travel: '버스 26분', social: true,
+    hours: { 1: [13, 17], 2: [10, 18], 3: [10, 18], 4: [16, 18], 5: [10, 17], 6: [10, 14] },
+    hoursText: '월 13~17 · 화·수 10~18 · 목 16~18 · 금 10~17 · 토 10~14 · 일 휴무',
+    checked: '2026-10-19', source: '네이버지도', free: false, reserve: true, price: null, link: 'https://naver.me/Gntfqimo',
+    why: '친구와 함께 예약해서 같이 만들어보는 클래스예요.',
+    note: '2인 이상부터 예약 가능 · 화·수·금 13~14시 휴게',
+  },
+  {
+    id: 'irul', area: 'school', name: '이룰스튜디오 (양모펠트 액자 원데이)', interests: ['create'],
+    energy: [2, 3], minutes: 60, travel: '버스 19분 (환승 1회)', hours: null, hoursText: '11:00~21:00 · 휴무일 확인 필요',
+    checked: '2026-10-19', source: '네이버지도', free: false, reserve: null, price: '35,000원 (1시간 · 재료 포함)',
+    why: '한 시간이면 작은 양모펠트 액자 하나를 완성할 수 있어요.',
   },
   // TODO 쌍문동 에너지 높음(3) 장소 추가 자리
   // 학교 근처에서 에너지 높음을 고르면 지금은 조용한 곳 위주로 나온다.
